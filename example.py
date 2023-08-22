@@ -1,8 +1,7 @@
 import asyncio
-from sc_parser import parse_link
+from sc_parser import parse_link, parse_filters
 
-url = 'https://socialclub.rockstargames.com/jobs/?dateRange=last7&missiontype=race&platform=pc&sort=likes&title=gtav'
-
+url = "https://socialclub.rockstargames.com/member/guilherme_94/jobs?dateRange=last7&platform=pc&sort=date&title=gtav&missiontype=race"
 
 async def parser(data):
     jobs_data = []
@@ -20,6 +19,12 @@ async def parser(data):
 
 async def main():
     data = await parse_link(url=url, page_count=3, page_size=15, page_offset=0)
+    parsed_data = await parser(data)
+    print(parsed_data)
+
+    # The same but with filters
+    data = await parse_filters(job_type="race", platform="pc", author="guilherme_94", sort_method="date",
+                               page_count=3, page_size=15, page_offset=0)
     parsed_data = await parser(data)
     print(parsed_data)
 

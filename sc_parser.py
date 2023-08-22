@@ -1,5 +1,5 @@
 from playwright.async_api import async_playwright
-from config import login, password, data_folder, debug
+from config import email, password, data_folder, debug
 from urllib.parse import parse_qs
 import httpx
 import json
@@ -15,7 +15,7 @@ async def logining(url: str):
             await page.wait_for_selector('input[name="email"]')
             btn = await page.wait_for_selector(
                 '.UI__Button-socialclub__btn, .UI__Button-socialclub__primary, .UI__Button-socialclub__medium, .loginform__submit__rf6YG')
-            await page.fill('input[name="email"]', login)
+            await page.fill('input[name="email"]', email)
             await page.fill('input[name="password"]', password)
             await page.get_by_text("Запомнить меня").click()
             await btn.click()
@@ -39,23 +39,28 @@ async def logining(url: str):
             await page.close()
 
 
-async def get_data(token: str, url: str, page_count=None, page_size=15, page_offset=0):
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-        "Host": "scapi.rockstargames.com",
-        "Origin": "https://socialclub.rockstargames.com",
-        "Referer": "https://socialclub.rockstargames.com/",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36",
-        "X-Requested-With": "XMLHttpRequest"
-    }
+async def get_user_info(headers: dict, nickname: str = "Makcxim", max_friends: int = 3):
+    url = f"https://scapi.rockstargames.com/profile/getprofile?nickname={nickname}&maxFriends={max_friends}"
+    response = httpx.get(url, headers=headers)
+    return response.json()
 
+
+async def get_data(headers: dict, url: str, page_count=None, page_size=15, page_offset=0):
     url += "&pageIndex=0"
     url_part = 'https://scapi.rockstargames.com/search/mission'
 
     query_params = parse_qs(url[url.find("?") + 1:])
     query_params = {x: ' '.join(y) for x, y in query_params.items()}
+
+    if url.find("member"):
+        member_name = url[url.find("member") + 7:url.find("/jobs")]
+        user_id = await get_user_info(headers=headers, nickname=member_name)
+        if not user_id['status']:
+            cookies = await refresh_access(open(data_folder / "cookies.json", "r").read())
+            cookies_data = {i['name']: i for i in cookies}
+            headers['Authorization'] = f"Bearer {cookies_data['BearerToken']['value']}"
+        user_id = (await get_user_info(headers=headers, nickname=member_name))["accounts"][0]["rockstarAccount"]["rockstarId"]
+        query_params['creatorRockstarId'] = user_id
 
     if not page_count:
         query_params['pageSize'] = str(1)
@@ -155,7 +160,50 @@ async def parse_link(url: str, page_count=None, page_size=0, page_offset=0):
         cookies = open(data_folder / "cookies.json", "r").read()
 
     cookies_data = {i['name']: i for i in json.loads(cookies)}
-    data = await get_data(cookies_data['BearerToken']['value'], url,
-                          page_count=page_count, page_size=page_size, page_offset=page_offset)
+    headers = {
+        "Authorization": f"Bearer {cookies_data['BearerToken']['value']}",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "Host": "scapi.rockstargames.com",
+        "Origin": "https://socialclub.rockstargames.com",
+        "Referer": "https://socialclub.rockstargames.com/",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36",
+        "X-Requested-With": "XMLHttpRequest"
+    }
 
+    data = await get_data(headers, url, page_count=page_count, page_size=page_size, page_offset=page_offset)
+    return data
+
+
+async def parse_filters(job_type: str = "", platform: str = "pc",
+                        player_count: str = "", date: str = "last7",
+                        sort_method: str = "likes", author: str = "",
+                        page_count=None, page_size=0, page_offset=0):
+    # TODO write all job types
+    cookies = open(data_folder / "cookies.json", "r").read()
+    names = [i['name'] for i in json.loads(cookies)]
+
+    if 'BearerToken' not in names:
+        await logining('https://signin.rockstargames.com/signin/user-form?cid=socialclub')
+        cookies = open(data_folder / "cookies.json", "r").read()
+
+    url = "https://socialclub.rockstargames.com/"
+    if author:
+        url += "member/guilherme_94/"
+    url += f"jobs?dateRange={date}&missiontype={job_type}&platform={platform}" \
+           f"&players={player_count}&sort={sort_method}&title=gtav"
+
+    cookies_data = {i['name']: i for i in json.loads(cookies)}
+    headers = {
+        "Authorization": f"Bearer {cookies_data['BearerToken']['value']}",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "Host": "scapi.rockstargames.com",
+        "Origin": "https://socialclub.rockstargames.com",
+        "Referer": "https://socialclub.rockstargames.com/",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36",
+        "X-Requested-With": "XMLHttpRequest"
+    }
+
+    data = await get_data(headers, url, page_count=page_count, page_size=page_size, page_offset=page_offset)
     return data
