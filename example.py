@@ -3,6 +3,7 @@ from sc_parser import parse_link, parse_filters
 
 url = "https://socialclub.rockstargames.com/member/guilherme_94/jobs?dateRange=last7&platform=pc&sort=date&title=gtav&missiontype=race"
 
+
 async def parser(data):
     jobs_data = []
     for i in data['content']['items']:
