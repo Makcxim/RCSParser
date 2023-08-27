@@ -5,9 +5,20 @@ import httpx
 import json
 
 
+def create_directories_if_not_exist():
+    files = [file.name for file in data_folder.iterdir() if file.is_file()]
+
+    if "cookies.json" not in files:
+        with open(data_folder / "cookies.json", "w") as f:
+            f.write("[]")
+
+
+create_directories_if_not_exist()
+
+
 async def logining(url: str):
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=debug)
+        browser = await p.chromium.launch(headless=not debug)
         context = await browser.new_context()
         page = await context.new_page()
         try:
@@ -24,7 +35,7 @@ async def logining(url: str):
                 await page.wait_for_selector('.loginform__submitActions__dWo_j > button', timeout=999999)
                 await page.click('.loginform__submitActions__dWo_j > button')
             except Exception as e:
-                logger.info("If you're using Python {}, prefer {feature} of course!", 3.6, feature="f-strings")
+                print(type(e), e)
 
             await page.wait_for_selector('.FeedPostMessage__postCard__1uu_B, .UI__Card__card, .UI__Card__shadow',
                                          timeout=999999)
