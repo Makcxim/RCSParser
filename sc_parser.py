@@ -1,11 +1,15 @@
 from playwright.async_api import async_playwright
 from config import email, password, data_folder, debug
 from urllib.parse import parse_qs
+from typing import Dict, Optional
+from fake_useragent import UserAgent
 import httpx
 import json
 
 
 def create_directories_if_not_exist():
+    data_folder.mkdir(parents=True, exist_ok=True)
+
     files = [file.name for file in data_folder.iterdir() if file.is_file()]
 
     if "cookies.json" not in files:
@@ -14,12 +18,13 @@ def create_directories_if_not_exist():
 
 
 create_directories_if_not_exist()
+ua = UserAgent()
 
 
 async def logining(url: str):
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=not debug)
-        context = await browser.new_context()
+        context = await browser.new_context(user_agent=ua.random)
         page = await context.new_page()
         try:
             await page.goto(url)
@@ -28,17 +33,16 @@ async def logining(url: str):
                 '.UI__Button-socialclub__btn, .UI__Button-socialclub__primary, .UI__Button-socialclub__medium, .loginform__submit__rf6YG')
             await page.fill('input[name="email"]', email)
             await page.fill('input[name="password"]', password)
-            await page.get_by_text("Запомнить меня").click()
             await btn.click()
 
             try:
-                await page.wait_for_selector('.loginform__submitActions__dWo_j > button', timeout=999999)
+                await page.wait_for_selector('.loginform__submitActions__dWo_j > button', timeout=50000)
                 await page.click('.loginform__submitActions__dWo_j > button')
             except Exception as e:
                 print(type(e), e)
 
             await page.wait_for_selector('.FeedPostMessage__postCard__1uu_B, .UI__Card__card, .UI__Card__shadow',
-                                         timeout=999999)
+                                         timeout=50000)
 
             with open(data_folder / "cookies.json", "w") as f:
                 f.write(json.dumps(await context.cookies()))
@@ -50,13 +54,21 @@ async def logining(url: str):
             await page.close()
 
 
-async def get_user_info(headers: dict, nickname: str = "Makcxim", max_friends: int = 3):
+async def get_user_info(headers: dict, nickname: str = "Makcxim", max_friends: int = 3, first_try: bool = True):
     url = f"https://scapi.rockstargames.com/profile/getprofile?nickname={nickname}&maxFriends={max_friends}"
-    response = httpx.get(url, headers=headers)
-    return response.json()
+    response = httpx.get(url, headers=headers).json()
+    if not response['status'] and first_try:
+        cookies = await refresh_access(open(data_folder / "cookies.json", "r").read())
+        first_try = False
+        cookies_data = {i['name']: i for i in json.loads(cookies)}
+        headers['Authorization'] = f"Bearer {cookies_data['BearerToken']['value']}"
+        return await get_user_info(headers, nickname, max_friends, first_try)
+    return response
 
 
-async def get_data(headers: dict, url: str, page_count=None, page_size=15, page_offset=0):
+async def get_data(headers: dict, url: str, page_count: int = 1,
+                   page_size: int = 15, page_offset: int = 0) -> dict[str, str]:
+
     url += "&pageIndex=0"
     url_part = 'https://scapi.rockstargames.com/search/mission'
 
@@ -65,11 +77,6 @@ async def get_data(headers: dict, url: str, page_count=None, page_size=15, page_
 
     if url.find("member"):
         member_name = url[url.find("member") + 7:url.find("/jobs")]
-        user_id = await get_user_info(headers=headers, nickname=member_name)
-        if not user_id['status']:
-            cookies = await refresh_access(open(data_folder / "cookies.json", "r").read())
-            cookies_data = {i['name']: i for i in cookies}
-            headers['Authorization'] = f"Bearer {cookies_data['BearerToken']['value']}"
         user_id = (await get_user_info(headers=headers, nickname=member_name))["accounts"][0]["rockstarAccount"]["rockstarId"]
         query_params['creatorRockstarId'] = user_id
 
@@ -88,7 +95,7 @@ async def get_data(headers: dict, url: str, page_count=None, page_size=15, page_
         r = httpx.get(url_part, params=query_params, headers=headers).json()
         if not r['status']:
             cookies = await refresh_access(open(data_folder / "cookies.json", "r").read())
-            cookies_data = {i['name']: i for i in cookies}
+            cookies_data = {i['name']: i for i in json.loads(cookies)}
             headers['Authorization'] = f"Bearer {cookies_data['BearerToken']['value']}"
             r = httpx.get(url_part, params=query_params, headers=headers).json()
 
@@ -122,7 +129,7 @@ async def refresh_access(old_cookies):
         'Sec-Fetch-Dest': 'empty',
         'Sec-Fetch-Mode': 'same-origin',
         'Sec-Fetch-Site': 'same-origin',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36 OPR/99.0.0.0',
+        'User-Agent': ua.random,
         'X-Requested-With': 'XMLHttpRequest',
         'sec-ch-ua': '"Opera";v="99", "Chromium";v="113", "Not-A.Brand";v="24"',
         'sec-ch-ua-mobile': '?0',
@@ -133,12 +140,12 @@ async def refresh_access(old_cookies):
     }
 
     cookies = {
-        'prod': old_cookies_data['prod']['value'],
-        'RockStarWebSessionId': old_cookies_data['RockStarWebSessionId']['value'],
-        'CSRFToken': old_cookies_data['CSRFToken']['value'],
-        'BearerToken': old_cookies_data['BearerToken']['value'],
-        'TS01008f56': old_cookies_data['TS01008f56']['value'],
-        'TS011be943': old_cookies_data['TS011be943']['value'],
+        "prod": old_cookies_data["prod"]["value"],
+        "RockStarWebSessionId": old_cookies_data["RockStarWebSessionId"]["value"],
+        "CSRFToken": old_cookies_data["CSRFToken"]["value"],
+        "BearerToken": old_cookies_data["BearerToken"]["value"],
+        "TS01008f56": old_cookies_data["TS01008f56"]["value"],
+        "TS011be943": old_cookies_data["TS011be943"]["value"],
     }
 
     try:
@@ -148,21 +155,31 @@ async def refresh_access(old_cookies):
             await logining('https://signin.rockstargames.com/signin/user-form?cid=socialclub')
             new_cookies = open(data_folder / "cookies.json", "r").read()
         else:
-            new_token = r.cookies.jar._cookies[list(r.cookies.jar._cookies.keys())[0]]['/']['BearerToken'].value
-            new_ts_token = r.cookies.jar._cookies[list(r.cookies.jar._cookies.keys())[0]]['/']['TS011be943'].value
+            new_token = r.cookies.jar._cookies[list(r.cookies.jar._cookies.keys())[0]]["/"]["BearerToken"].value
+            new_ts_token = r.cookies.jar._cookies[list(r.cookies.jar._cookies.keys())[0]]["/"]["TS011be943"].value
 
-            old_cookies_data['BearerToken']['value'] = new_token
-            old_cookies_data['TS011be943']['value'] = new_ts_token
-            new_cookies = [i for x, i in old_cookies_data.items()]
+            old_cookies_data["BearerToken"]["value"] = new_token
+            old_cookies_data["TS011be943"]["value"] = new_ts_token
+            new_cookies = json.dumps([i for x, i in old_cookies_data.items()])
             with open(data_folder / "cookies.json", "w") as f:
-                f.write(json.dumps(new_cookies))
+                f.write(new_cookies)
 
         return new_cookies
     except Exception as e:
         print('ERROR', type(e), e)
 
 
-async def parse_link(url: str, page_count=None, page_size=0, page_offset=0):
+async def parse_link(url: str, page_count: int = 1, page_size: int = 15, page_offset: int = 0) -> dict[str, str]:
+    """
+    Retrieves a list of jobs based on url.
+    Url example: https://socialclub.rockstargames.com/jobs/?dateRange=any&platform=pc&sort=plays&title=gtav
+    :param url: str, url to parse
+    :param page_count: int, number of pages to retrieve (default is 1)
+    :param page_size: int, number of items per page (default is 15)
+    :param page_offset: int, page offset (default is 0)
+    :return: On success, returns a dictionary of Rockstar jobs.
+    """
+
     cookies = open(data_folder / "cookies.json", "r").read()
     names = [i['name'] for i in json.loads(cookies)]
 
@@ -178,7 +195,7 @@ async def parse_link(url: str, page_count=None, page_size=0, page_offset=0):
         "Host": "scapi.rockstargames.com",
         "Origin": "https://socialclub.rockstargames.com",
         "Referer": "https://socialclub.rockstargames.com/",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36",
+        'User-Agent': ua.random,
         "X-Requested-With": "XMLHttpRequest"
     }
 
@@ -186,23 +203,54 @@ async def parse_link(url: str, page_count=None, page_size=0, page_offset=0):
     return data
 
 
-async def parse_filters(job_type: str = "", platform: str = "pc",
-                        player_count: str = "", date: str = "last7",
-                        sort_method: str = "likes", author: str = "",
-                        page_count=None, page_size=0, page_offset=0):
-    # TODO write all job types
+async def parse_filters(mission_type: Optional[str | None] = "",
+                        subtype: Optional[str | None] = "",
+                        platform: str = "pc",
+                        player_count: Optional[str | None] = "",
+                        date: str = "last7",
+                        sort_method: str = "likes",
+                        author: Optional[str | None] = "",
+                        page_count: int = 1,
+                        page_size: int = 15,
+                        page_offset: int = 0) -> dict[str, str]:
+    """
+    Retrieves a list of jobs based on specified filters.
+
+    :param mission_type: The main mission type. Possible values:
+        - 'mission'
+        - 'deathmatch'
+        - 'kingofthehill'
+        - 'race'
+        - 'survival'
+        - 'capture'
+        - 'lastteamstanding'
+        - 'parachuting'
+
+    :param subtype: An optional subtype that relates to the mission type. Subtypes vary depending on the mission type.
+        - For 'mission': ['versus', 'adversary']
+        - For 'deathmatch': ['deathmatch', 'teamdeathmatch', 'vehicledeathmatch', 'arenadeathmatch']
+        - For 'kingofthehill': ['kingofthehill', 'teamkingofthehill']
+        - For 'race': ['pursuitrace', 'streetrace', 'openwheelrace', 'arenawar', 'transformrace', 'specialrace',
+           'stuntrace', 'targetrace', 'airrace', 'bikerace', 'landrace', 'waterrace']
+
+    :param platform: The platform for the job. Possible values: 'ps5', 'xboxsx', 'ps4', 'xboxone', 'pc'
+    :param player_count: The desired player count for the job. Possible values: '', '1', '2', '4', '8', '16', '30'
+    :param date: The date range for the job. Possible values: 'any', 'today', 'last7', 'lastmonth', 'lastyear'
+    :param sort_method: The sorting method for the job list. Possible values: 'likes', 'plays', 'date'
+    :param author: An optional parameter to specify the author's nickname.
+    :param page_count: The number of pages to retrieve (default is 1).
+    :param page_size: The number of items per page (default is 15).
+    :param page_offset: The page offset (default is 0).
+
+    :return: On success, returns a dictionary of Rockstar jobs.
+    """
+
     cookies = open(data_folder / "cookies.json", "r").read()
     names = [i['name'] for i in json.loads(cookies)]
 
     if 'BearerToken' not in names:
         await logining('https://signin.rockstargames.com/signin/user-form?cid=socialclub')
         cookies = open(data_folder / "cookies.json", "r").read()
-
-    url = "https://socialclub.rockstargames.com/"
-    if author:
-        url += "member/guilherme_94/"
-    url += f"jobs?dateRange={date}&missiontype={job_type}&platform={platform}" \
-           f"&players={player_count}&sort={sort_method}&title=gtav"
 
     cookies_data = {i['name']: i for i in json.loads(cookies)}
     headers = {
@@ -215,6 +263,12 @@ async def parse_filters(job_type: str = "", platform: str = "pc",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36",
         "X-Requested-With": "XMLHttpRequest"
     }
+
+    url = "https://socialclub.rockstargames.com/"
+    if author:
+        url += f"member/{author}/"
+    url += f"jobs?dateRange={date}&missiontype={mission_type}&subtype={subtype}&platform={platform}" \
+           f"&players={player_count}&sort={sort_method}&title=gtav"
 
     data = await get_data(headers, url, page_count=page_count, page_size=page_size, page_offset=page_offset)
     return data
