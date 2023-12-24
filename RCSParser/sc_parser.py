@@ -1,7 +1,7 @@
 from playwright.async_api import async_playwright
 from config import email, password, data_folder, debug
 from urllib.parse import parse_qs
-from typing import Dict, Optional
+from typing import Optional
 from fake_useragent import UserAgent
 import httpx
 import json
@@ -40,6 +40,16 @@ async def logining(url: str):
                 await page.click('.loginform__submitActions__dWo_j > button')
             except Exception as e:
                 print(type(e), e)
+
+            # TODO write about captcha in README
+            try:
+                await page.wait_for_selector('.EmailVerificationForm__buttonRow__GnwKl', timeout=3000)
+                code = input("Input your email verification code: ")
+                await page.get_by_label("Verification code").fill(code)
+                btn = page.get_by_role("button", name="Submit")
+                await btn.click()
+            except Exception as e:
+                print("Verification not required")
 
             await page.wait_for_selector('.FeedPostMessage__postCard__1uu_B, .UI__Card__card, .UI__Card__shadow',
                                          timeout=50000)

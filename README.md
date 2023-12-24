@@ -5,7 +5,7 @@ With page size, page count and page offset.
 # Usage
 
 ```python
-from sc_parser import parse_link, parse_filters
+from RCSParser.sc_parser import parse_link, parse_filters
 
 await parse_link(url='url', page_count=3, page_size=15, page_offset=0)
 
