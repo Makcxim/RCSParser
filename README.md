@@ -1,4 +1,4 @@
-# Simple SocialClub jobs finder
+# Rockstar Social Club Parser
 Can give you all needed jobs by link or filters.  
 With page size, page count and page offset.
 
