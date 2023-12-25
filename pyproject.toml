@@ -21,9 +21,9 @@ classifiers = [
 ]
 
 [project.urls]
-Documentation = "https://github.com/Makcxim/SocialClub-jobs-finder#readme"
-Issues = "https://github.com/Makcxim/SocialClub-jobs-finder/issues"
-Source = "github.com/Makcxim/SocialClub-jobs-finder"
+Documentation = "https://github.com/Makcxim/RCSParser#readme"
+Issues = "https://github.com/Makcxim/RCSParser/issues"
+Source = "https://github.com/Makcxim/RCSParser"
 
 [tool.hatch.version]
 path = "RCSParser/__init__.py"
